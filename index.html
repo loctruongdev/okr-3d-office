@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Văn phòng 3D OKR Realtime - Rhysman</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #0f172a; font-family: sans-serif; }
+    #canvas-container { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+
+  <!-- UI Dashboard Realtime -->
+  <div class="absolute top-4 right-4 z-10 w-80 bg-slate-800/90 text-white p-4 rounded-xl shadow-2xl border border-slate-700 backdrop-blur">
+    <h2 class="text-lg font-bold border-b border-slate-700 pb-2 mb-3 flex items-center justify-between">
+      🏢 Trạng thái OKR Realtime
+      <span class="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse"></span>
+    </h2>
+    <div id="user-list" class="space-y-3 max-h-[80vh] overflow-y-auto">
+      <p class="text-xs text-slate-400">Đang đồng bộ dữ liệu từ Lark Base...</p>
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <script>
+    const WORKER_API_URL = "https://okr.loceducate.workers.dev/api/status";
+
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a);
+
+    const aspect = window.innerWidth / window.innerHeight;
+    const d = 12;
+    const camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
+    camera.position.set(20, 20, 20);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(15, 25, 15);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const floorGeo = new THREE.BoxGeometry(18, 0.4, 14);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.position.y = -0.2;
+    scene.add(floor);
+
+    const deskGeo = new THREE.BoxGeometry(5, 0.8, 2.2);
+    const deskMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+    const workDesk = new THREE.Mesh(deskGeo, deskMat);
+    workDesk.position.set(-4, 0.4, 0);
+    scene.add(workDesk);
+
+    const pantryMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
+    const pantry = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.8, 2), pantryMat);
+    pantry.position.set(4, 0.4, -4);
+    scene.add(pantry);
+
+    const avatars = {};
+    const colors = [0x38bdf8, 0xf43f5e, 0x10b981, 0xa855f7, 0xf59e0b];
+
+    function createAvatar(name, colorIdx) {
+      const group = new THREE.Group();
+      
+      const bodyGeo = new THREE.CapsuleGeometry(0.3, 0.6, 4, 8);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: colors[colorIdx % colors.length] });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 0.6;
+      group.add(body);
+
+      const lightGeo = new THREE.SphereGeometry(0.12, 16, 16);
+      const lightMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8 });
+      const statusLight = new THREE.Mesh(lightGeo, lightMat);
+      statusLight.position.y = 1.3;
+      group.add(statusLight);
+
+      group.position.set(4, 0, -4);
+      scene.add(group);
+
+      return { group, statusLight, targetPos: group.position.clone() };
+    }
+
+    async function updateOfficeState() {
+      try {
+        const res = await fetch(WORKER_API_URL);
+        const data = await res.json();
+        
+        const userListEl = document.getElementById('user-list');
+        const names = Object.keys(data);
+
+        if (names.length === 0) return;
+        userListEl.innerHTML = '';
+
+        names.forEach((name, idx) => {
+          const userState = data[name];
+          const status = userState.status || '';
+
+          const card = document.createElement('div');
+          card.className = "bg-slate-700/50 p-2.5 rounded-lg border border-slate-600/50";
+          card.innerHTML = `
+            <div class="flex justify-between items-center text-sm font-semibold">
+              <span>${name}</span>
+              <span class="text-xs px-2 py-0.5 rounded ${getStatusBadgeClass(status)}">${status || 'Idle'}</span>
+            </div>
+            <div class="text-xs text-slate-300 mt-1 truncate">📌 ${userState.current_task}</div>
+          `;
+          userListEl.appendChild(card);
+
+          if (!avatars[name]) {
+            avatars[name] = createAvatar(name, idx);
+          }
+
+          const avatar = avatars[name];
+          const statusLower = status.toLowerCase();
+
+          if (statusLower.includes('đang làm') || statusLower.includes('in progress') || statusLower.includes('doing')) {
+            avatar.targetPos.set(-5 + (idx % 3) * 1.5, 0, 0);
+            avatar.statusLight.material.color.setHex(0x22c55e);
+          } else if (statusLower.includes('hoàn thành') || statusLower.includes('done') || statusLower.includes('nộp')) {
+            avatar.targetPos.set(0, 0, 3);
+            avatar.statusLight.material.color.setHex(0x3b82f6);
+          } else if (statusLower.includes('review') || statusLower.includes('đang review')) {
+            avatar.targetPos.set(-1, 0, -3);
+            avatar.statusLight.material.color.setHex(0xeab308);
+          } else {
+            avatar.targetPos.set(4 + (idx % 3) * 0.8, 0, -4);
+            avatar.statusLight.material.color.setHex(0x94a3b8);
+          }
+        });
+      } catch (e) {
+        console.log("Đang chờ kết nối dữ liệu từ Worker...");
+      }
+    }
+
+    function getStatusBadgeClass(status) {
+      const s = status.toLowerCase();
+      if (s.includes('đang làm') || s.includes('in progress')) return "bg-green-500/20 text-green-300 border border-green-500/30";
+      if (s.includes('hoàn thành') || s.includes('done')) return "bg-blue-500/20 text-blue-300 border border-blue-500/30";
+      if (s.includes('review')) return "bg-amber-500/20 text-amber-300 border border-amber-500/30";
+      return "bg-slate-500/20 text-slate-300 border border-slate-500/30";
+    }
+
+    setInterval(updateOfficeState, 3000);
+    updateOfficeState();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+
+      Object.values(avatars).forEach(avatar => {
+        avatar.group.position.lerp(avatar.targetPos, 0.05);
+      });
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      const aspect = window.innerWidth / window.innerHeight;
+      camera.left = -d * aspect;
+      camera.right = d * aspect;
+      camera.top = d;
+      camera.bottom = -d;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
