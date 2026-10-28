@@ -108,49 +108,48 @@
         const response = await fetch(WORKER_API_URL);
         const data = await response.json();
 
-        if (data.success && data.state) {
-          const userListEl = document.getElementById("user-list");
-          userListEl.innerHTML = ""; // Xóa trạng thái chờ loading
+        // Kiểm tra xem API có trả về object state hay không
+        const states = data.state || data; 
+        const userListEl = document.getElementById("user-list");
+        userListEl.innerHTML = ""; 
 
-          const keys = Object.keys(data.state);
+        const owners = Object.keys(states).filter(k => k !== "success" && k !== "error");
 
-          if (keys.length === 0) {
-            userListEl.innerHTML = '<p class="text-xs text-slate-400">Chưa có dữ liệu nhiệm vụ.</p>';
-            return;
+        if (owners.length === 0) {
+          userListEl.innerHTML = '<p class="text-xs text-slate-400">Chưa có dữ liệu nhiệm vụ.</p>';
+          return;
+        }
+
+        owners.forEach(owner => {
+          const item = states[owner];
+          // Đảm bảo item là object chứa dữ liệu task
+          if (!item || typeof item !== 'object') return;
+
+          let statusBadgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/30";
+          const statusText = item.status || "Đang làm";
+          if (statusText.includes("Nộp") || statusText.includes("Hoàn thành")) {
+            statusBadgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+          } else if (statusText.includes("Đang")) {
+            statusBadgeColor = "bg-amber-500/20 text-amber-300 border-amber-500/30";
           }
 
-          // Duyệt qua từng nhân sự trong state
-          keys.forEach(owner => {
-            const item = data.state[owner];
-            
-            // Màu badge theo trạng thái
-            let statusBadgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/30";
-            if (item.status && item.status.includes("Nộp")) {
-              statusBadgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-            } else if (item.status && item.status.includes("Đang")) {
-              statusBadgeColor = "bg-amber-500/20 text-amber-300 border-amber-500/30";
-            }
-
-            const userCard = document.createElement("div");
-            userCard.className = "bg-slate-700/60 p-3 rounded-lg border border-slate-600 shadow-sm transition hover:border-slate-500";
-            userCard.innerHTML = `
-              <div class="flex justify-between items-center mb-1.5">
-                <span class="font-bold text-sm text-slate-100 flex items-center gap-1.5">
-                  👤 ${owner}
-                </span>
-                <span class="text-[11px] px-2 py-0.5 rounded border font-medium ${statusBadgeColor}">
-                  ${item.status || "Idle"}
-                </span>
-              </div>
-              <div class="text-xs text-slate-300 bg-slate-800/80 p-2 rounded border border-slate-700/50">
-                📌 <span class="font-medium text-slate-200">Task:</span> ${item.current_task || "Không có task"}
-              </div>
-            `;
-            userListEl.appendChild(userCard);
-          });
-        }
+          const userCard = document.createElement("div");
+          userCard.className = "bg-slate-700/60 p-3 rounded-lg border border-slate-600 shadow-sm";
+          userCard.innerHTML = `
+            <div class="flex justify-between items-center mb-1.5">
+              <span class="font-bold text-sm text-slate-100">👤 ${owner}</span>
+              <span class="text-[11px] px-2 py-0.5 rounded border font-medium ${statusBadgeColor}">
+                ${statusText}
+              </span>
+            </div>
+            <div class="text-xs text-slate-300 bg-slate-800/80 p-2 rounded border border-slate-700/50">
+              📌 <span class="font-medium text-slate-200">Task:</span> ${item.current_task || item.task_name || "Không có task"}
+            </div>
+          `;
+          userListEl.appendChild(userCard);
+        });
       } catch (err) {
-        console.error("Lỗi khi kết nối Worker API:", err);
+        console.error("Lỗi kết nối API:", err);
       }
     }
 
