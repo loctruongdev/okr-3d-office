@@ -108,12 +108,13 @@
         const response = await fetch(WORKER_API_URL);
         const data = await response.json();
 
-        // Kiểm tra xem API có trả về object state hay không
-        const states = data.state || data; 
+        // Trích xuất chính xác object state từ cấu trúc JSON
+        const states = data.state || {}; 
         const userListEl = document.getElementById("user-list");
         userListEl.innerHTML = ""; 
 
-        const owners = Object.keys(states).filter(k => k !== "success" && k !== "error");
+        // Lấy danh sách tên nhân sự (các key bên trong state)
+        const owners = Object.keys(states);
 
         if (owners.length === 0) {
           userListEl.innerHTML = '<p class="text-xs text-slate-400">Chưa có dữ liệu nhiệm vụ.</p>';
@@ -122,15 +123,22 @@
 
         owners.forEach(owner => {
           const item = states[owner];
-          // Đảm bảo item là object chứa dữ liệu task
           if (!item || typeof item !== 'object') return;
 
+          // Phân loại màu sắc badge trạng thái
           let statusBadgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/30";
           const statusText = item.status || "Đang làm";
           if (statusText.includes("Nộp") || statusText.includes("Hoàn thành")) {
             statusBadgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
-          } else if (statusText.includes("Đang")) {
+          } else if (statusText.includes("Đang") || statusText.includes("Review")) {
             statusBadgeColor = "bg-amber-500/20 text-amber-300 border-amber-500/30";
+          }
+
+          // Định dạng thời gian cập nhật gọn gàng
+          let formattedTime = "";
+          if (item.updated_at) {
+            const date = new Date(item.updated_at);
+            formattedTime = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           }
 
           const userCard = document.createElement("div");
@@ -142,8 +150,9 @@
                 ${statusText}
               </span>
             </div>
-            <div class="text-xs text-slate-300 bg-slate-800/80 p-2 rounded border border-slate-700/50">
-              📌 <span class="font-medium text-slate-200">Task:</span> ${item.current_task || item.task_name || "Không có task"}
+            <div class="text-xs text-slate-300 bg-slate-800/80 p-2 rounded border border-slate-700/50 space-y-1">
+              <div>📌 <span class="font-medium text-slate-200">Task:</span> ${item.current_task || "Không có task"}</div>
+              ${formattedTime ? `<div class="text-[10px] text-slate-400 text-right">🕒 ${formattedTime}</div>` : ''}
             </div>
           `;
           userListEl.appendChild(userCard);
